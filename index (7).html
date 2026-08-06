@@ -1,569 +1,369 @@
-#!/bin/bash
-
-# ============================================================
-#  ANIME 2026 - PLATAFORMA DE STREAMING DE ÚLTIMA GENERACIÓN
-#  Script para generar toda la estructura del proyecto
-# ============================================================
-
-set -e  # Detener el script si ocurre algún error
-
-echo "🚀 Creando proyecto Anime 2026..."
-
-# 1. Crear la carpeta del proyecto
-mkdir -p anime-2026
-cd anime-2026
-
-# 2. Crear estructura de carpetas
-mkdir -p app/anime/[id]
-mkdir -p app/watch/[id]
-mkdir -p app/search
-mkdir -p components
-mkdir -p lib
-mkdir -p styles
-
-# 3. Crear archivos con sus contenidos
-
-# ------------------- package.json -------------------
-cat > package.json << 'EOF'
-{
-  "name": "anime-2026",
-  "version": "1.0.0",
-  "private": true,
-  "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint"
-  },
-  "dependencies": {
-    "next": "14.2.5",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "graphql-request": "^7.1.0",
-    "graphql": "^16.9.0",
-    "next-themes": "^0.3.0",
-    "framer-motion": "^11.3.0"
-  },
-  "devDependencies": {
-    "autoprefixer": "^10.4.19",
-    "eslint": "^8.57.0",
-    "eslint-config-next": "14.2.5",
-    "postcss": "^8.4.39",
-    "tailwindcss": "^3.4.4"
-  }
-}
-EOF
-
-# ------------------- tailwind.config.js -------------------
-cat > tailwind.config.js << 'EOF'
-/** @type {import('tailwindcss').Config} */
-module.exports = {
-  darkMode: "class",
-  content: [
-    "./app/**/*.{js,ts,jsx,tsx,mdx}",
-    "./components/**/*.{js,ts,jsx,tsx,mdx}",
-  ],
-  theme: {
-    extend: {
-      fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
-      },
-      animation: {
-        'float': 'float 6s ease-in-out infinite',
-        'gradient': 'gradient 8s ease infinite',
-      },
-      keyframes: {
-        float: {
-          '0%, 100%': { transform: 'translateY(0px)' },
-          '50%': { transform: 'translateY(-20px)' },
-        },
-        gradient: {
-          '0%, 100%': { backgroundPosition: '0% 50%' },
-          '50%': { backgroundPosition: '100% 50%' },
-        },
-      },
-    },
-  },
-  plugins: [],
-}
-EOF
-
-# ------------------- next.config.js -------------------
-cat > next.config.js << 'EOF'
-/** @type {import('next').NextConfig} */
-const nextConfig = {
-  images: {
-    domains: ['s4.anilist.co', 'img.anilist.co'],
-  },
-}
-module.exports = nextConfig
-EOF
-
-# ------------------- styles/globals.css -------------------
-cat > styles/globals.css << 'EOF'
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap');
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-@layer base {
-  body {
-    @apply antialiased;
-    background: radial-gradient(ellipse at top, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
-  }
-  .dark body {
-    background: radial-gradient(ellipse at top, #0a0a0f 0%, #0f0f1a 50%, #1a1a2e 100%);
-  }
-}
-
-@layer components {
-  .glass {
-    @apply bg-white/10 dark:bg-black/30 backdrop-blur-xl border border-white/20 dark:border-white/10 shadow-2xl;
-  }
-  .glass-card {
-    @apply glass rounded-2xl p-6 hover:scale-[1.02] transition-all duration-300 hover:shadow-neon;
-  }
-  .gradient-text {
-    @apply bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 bg-clip-text text-transparent animate-gradient bg-[length:200%_200%];
-  }
-}
-
-@layer utilities {
-  .shadow-neon {
-    box-shadow: 0 0 30px rgba(255, 0, 255, 0.2), 0 0 60px rgba(0, 255, 255, 0.1);
-  }
-  .animation-delay-1000 { animation-delay: 1s; }
-  .animation-delay-2000 { animation-delay: 2s; }
-}
-EOF
-
-# ------------------- app/layout.js -------------------
-cat > app/layout.js << 'EOF'
-import "./../styles/globals.css";
-import { ThemeProvider } from "next-themes";
-import Navbar from "@/components/Navbar";
-
-export const metadata = {
-  title: "Anime 2026 - La próxima generación de streaming",
-  description: "Plataforma de anime con IA, comunidad y calidad 4K",
-};
-
-export default function RootLayout({ children }) {
-  return (
-    <html lang="es" suppressHydrationWarning>
-      <body className="min-h-screen bg-white dark:bg-black transition-colors duration-300">
-        <ThemeProvider attribute="class" defaultTheme="dark">
-          <Navbar />
-          <main className="container mx-auto px-4 py-8 md:py-12">
-            {children}
-          </main>
-        </ThemeProvider>
-      </body>
-    </html>
-  );
-}
-EOF
-
-# ------------------- lib/anilist.js -------------------
-cat > lib/anilist.js << 'EOF'
-import { GraphQLClient } from 'graphql-request';
-const endpoint = 'https://graphql.anilist.co';
-const client = new GraphQLClient(endpoint);
-
-export async function getPopularAnime(page = 1, perPage = 24) {
-  const query = `
-    query($page: Int, $perPage: Int) {
-      Page(page: $page, perPage: $perPage) {
-        pageInfo { total currentPage lastPage }
-        media(type: ANIME, sort: POPULARITY_DESC, isAdult: false) {
-          id
-          title { romaji english native }
-          coverImage { large extraLarge }
-          bannerImage
-          description
-          genres
-          episodes
-          status
-          averageScore
-        }
-      }
-    }
-  `;
-  const data = await client.request(query, { page, perPage });
-  return data.Page;
-}
-
-export async function getAnimeDetails(id) {
-  const query = `
-    query($id: Int) {
-      Media(id: $id, type: ANIME) {
-        id
-        title { romaji english native }
-        coverImage { large extraLarge }
-        bannerImage
-        description
-        genres
-        episodes
-        status
-        averageScore meanScore popularity favourites trending
-        startDate { year month day }
-        endDate { year month day }
-        duration season seasonYear source
-        studios { nodes { name } }
-        characters { nodes { name { full } image { large } } }
-        staff { nodes { name { full } image { large } } }
-        relations { nodes { id title { romaji english } coverImage { large } type } }
-      }
-    }
-  `;
-  const data = await client.request(query, { id });
-  return data.Media;
-}
-
-export async function searchAnime(search, page = 1, perPage = 24) {
-  const query = `
-    query($search: String, $page: Int, $perPage: Int) {
-      Page(page: $page, perPage: $perPage) {
-        pageInfo { total currentPage lastPage }
-        media(type: ANIME, search: $search, isAdult: false) {
-          id
-          title { romaji english }
-          coverImage { large }
-          description
-          genres
-          episodes
-          status
-          averageScore
-        }
-      }
-    }
-  `;
-  const data = await client.request(query, { search, page, perPage });
-  return data.Page;
-}
-EOF
-
-# ------------------- components/Navbar.jsx -------------------
-cat > components/Navbar.jsx << 'EOF'
-"use client";
-import { useState, useEffect } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
-import ThemeToggle from "./ThemeToggle";
-
-export default function Navbar() {
-  const [searchQuery, setSearchQuery] = useState("");
-  const router = useRouter();
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
-
-  const handleSearch = (e) => {
-    e.preventDefault();
-    if (searchQuery.trim()) {
-      router.push(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
-      setSearchQuery("");
-    }
-  };
-
-  if (!mounted) return null;
-
-  return (
-    <motion.nav initial={{ y: -100 }} animate={{ y: 0 }} transition={{ duration: 0.5 }} className="sticky top-0 z-50 glass border-b border-white/10">
-      <div className="container mx-auto px-4 py-3 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-2 group">
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-            <span className="text-white font-bold text-xl">A</span>
-          </div>
-          <span className="text-2xl font-extrabold gradient-text hidden sm:block">Anime 2026</span>
-        </Link>
-        <form onSubmit={handleSearch} className="flex-1 max-w-md mx-4">
-          <div className="relative">
-            <input type="text" placeholder="Buscar anime..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full px-4 py-2 pl-10 rounded-full bg-white/10 dark:bg-black/30 border border-white/20 focus:border-purple-500 focus:outline-none transition-all placeholder:text-white/50 text-white" />
-            <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-white/50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-          </div>
-        </form>
-        <div className="flex items-center gap-4">
-          <ThemeToggle />
-          <Link href="/profile" className="text-white/70 hover:text-white transition-colors">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-          </Link>
-        </div>
-      </div>
-    </motion.nav>
-  );
-}
-EOF
-
-# ------------------- components/ThemeToggle.jsx -------------------
-cat > components/ThemeToggle.jsx << 'EOF'
-"use client";
-import { useTheme } from "next-themes";
-import { useEffect, useState } from "react";
-
-export default function ThemeToggle() {
-  const { theme, setTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
-  if (!mounted) return null;
-
-  return (
-    <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")} className="p-2 rounded-full bg-white/10 hover:bg-white/20 transition-all" aria-label="Cambiar tema">
-      {theme === "dark" ? (
-        <svg className="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" /></svg>
-      ) : (
-        <svg className="w-5 h-5 text-gray-800" fill="currentColor" viewBox="0 0 20 20"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" /></svg>
-      )}
-    </button>
-  );
-}
-EOF
-
-# ------------------- components/AnimeCard.jsx -------------------
-cat > components/AnimeCard.jsx << 'EOF'
-"use client";
-import Link from "next/link";
-import { motion } from "framer-motion";
-
-export default function AnimeCard({ anime, index = 0 }) {
-  const title = anime.title.english || anime.title.romaji || "Sin título";
-  const score = anime.averageScore || 0;
-
-  return (
-    <motion.div initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: index * 0.05 }} whileHover={{ y: -8 }} className="group">
-      <Link href={`/anime/${anime.id}`}>
-        <div className="glass-card cursor-pointer relative overflow-hidden">
-          <div className="relative aspect-[2/3] overflow-hidden rounded-xl">
-            <img src={anime.coverImage.large || "/placeholder.jpg"} alt={title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-4">
-              <div className="w-full">
-                <h3 className="text-white font-semibold text-sm line-clamp-2">{title}</h3>
-                <div className="flex items-center gap-2 mt-1">
-                  {score > 0 && <span className="text-yellow-400 text-xs font-bold">★ {score / 10}</span>}
-                  {anime.episodes && <span className="text-white/60 text-xs">{anime.episodes} eps</span>}
-                  {anime.status && <span className={`text-xs px-2 py-0.5 rounded-full ${anime.status === "RELEASING" ? "bg-green-500/20 text-green-400" : anime.status === "FINISHED" ? "bg-blue-500/20 text-blue-400" : "bg-gray-500/20 text-gray-400"}`}>{anime.status}</span>}
-                </div>
-              </div>
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AnimeStream · MiruroAPI</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
+        body { background: #0b0f1a; color: #e2e8f0; padding: 20px; min-height: 100vh; }
+        .container { max-width: 1300px; margin: 0 auto; }
+        header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 1px solid #1e293b; }
+        .logo { font-size: 28px; font-weight: 700; background: linear-gradient(135deg, #f472b6, #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .search-box { display: flex; gap: 10px; flex: 1; max-width: 500px; }
+        .search-box input { flex: 1; padding: 12px 18px; border-radius: 30px; border: none; font-size: 16px; background: #1e293b; color: #f1f5f9; outline: 2px solid transparent; transition: 0.2s; }
+        .search-box input:focus { outline-color: #a78bfa; }
+        .search-box button { padding: 12px 24px; border-radius: 30px; border: none; background: #a78bfa; color: #0b0f1a; font-weight: 700; cursor: pointer; transition: 0.2s; }
+        .search-box button:hover { background: #8b5cf6; transform: scale(1.02); }
+        .status { margin: 15px 0 25px; padding: 12px; border-radius: 10px; background: #1e293b; text-align: center; font-size: 14px; color: #94a3b8; min-height: 50px; display: flex; align-items: center; justify-content: center; }
+        .anime-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 25px; }
+        .anime-card { background: #1e293b; border-radius: 16px; overflow: hidden; transition: transform 0.2s, box-shadow 0.2s; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3); }
+        .anime-card:hover { transform: translateY(-6px); box-shadow: 0 12px 20px -8px rgba(167, 139, 250, 0.3); }
+        .anime-card img { width: 100%; height: 280px; object-fit: cover; background: #0f172a; }
+        .anime-card .info { padding: 16px; }
+        .anime-card .info h3 { font-size: 16px; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .anime-card .info p { font-size: 13px; color: #94a3b8; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(6px); z-index: 1000; justify-content: center; align-items: center; padding: 20px; }
+        .modal.active { display: flex; }
+        .modal-content { background: #0f172a; width: 100%; max-width: 900px; max-height: 90vh; border-radius: 20px; padding: 25px; overflow-y: auto; position: relative; border: 1px solid #1e293b; }
+        .modal-close { position: sticky; top: 0; float: right; font-size: 28px; color: #94a3b8; cursor: pointer; background: #0f172a; padding: 0 8px; border-radius: 50%; line-height: 1; z-index: 10; }
+        .modal-close:hover { color: #f1f5f9; }
+        .modal-title { font-size: 24px; margin-bottom: 20px; padding-right: 40px; }
+        .video-container { position: relative; width: 100%; padding-bottom: 56.25%; background: #000; border-radius: 12px; overflow: hidden; margin-bottom: 20px; }
+        .video-container video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #000; }
+        .episode-list { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 15px; max-height: 200px; overflow-y: auto; padding: 5px 0; }
+        .episode-btn { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; padding: 8px 18px; border-radius: 30px; cursor: pointer; transition: 0.15s; font-size: 14px; }
+        .episode-btn:hover { background: #334155; border-color: #a78bfa; }
+        .episode-btn.active { background: #a78bfa; color: #0b0f1a; border-color: #a78bfa; font-weight: 600; }
+        .loading-text { color: #94a3b8; padding: 10px 0; }
+        .error-text { color: #f87171; }
+        .episode-list::-webkit-scrollbar { width: 6px; }
+        .episode-list::-webkit-scrollbar-track { background: #0f172a; }
+        .episode-list::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+        .catalog-title { font-size: 20px; font-weight: 600; margin-bottom: 20px; color: #94a3b8; }
+        @media (max-width: 600px) { header { flex-direction: column; align-items: stretch; } .search-box { max-width: 100%; } .anime-grid { grid-template-columns: 1fr 1fr; gap: 15px; } .anime-card img { height: 200px; } }
+        @media (max-width: 420px) { .anime-grid { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">🎬 AnimeStream</div>
+            <div class="search-box">
+                <input type="text" id="searchInput" placeholder="Busca tu anime..." />
+                <button onclick="searchAnime()">Buscar</button>
             </div>
-          </div>
-          <div className="mt-3">
-            <h3 className="font-semibold text-white line-clamp-1 text-sm group-hover:text-purple-400 transition-colors">{title}</h3>
-            {anime.genres && <div className="flex flex-wrap gap-1 mt-1">{anime.genres.slice(0, 3).map((g) => <span key={g} className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-white/60">{g}</span>)}</div>}
-          </div>
-        </div>
-      </Link>
-    </motion.div>
-  );
-}
-EOF
-
-# ------------------- components/VideoPlayer.jsx -------------------
-cat > components/VideoPlayer.jsx << 'EOF'
-"use client";
-export default function VideoPlayer({ title, videoUrl }) {
-  return (
-    <div className="relative aspect-video rounded-3xl overflow-hidden glass">
-      <iframe src={videoUrl} className="w-full h-full" allowFullScreen allow="autoplay; encrypted-media" title={title} />
+        </header>
+        <div class="status" id="status">🌟 Cargando catálogo...</div>
+        <div class="anime-grid" id="animeGrid"></div>
     </div>
-  );
-}
-EOF
 
-# ------------------- app/page.js -------------------
-cat > app/page.js << 'EOF'
-import { getPopularAnime } from "@/lib/anilist";
-import AnimeCard from "@/components/AnimeCard";
-
-export default async function HomePage() {
-  const { media: animeList } = await getPopularAnime(1, 24);
-  return (
-    <div>
-      <section className="relative mb-12 rounded-3xl overflow-hidden glass p-8 md:p-12">
-        <div className="relative z-10">
-          <h1 className="text-4xl md:text-6xl font-extrabold gradient-text mb-4">Bienvenido a Anime 2026</h1>
-          <p className="text-white/70 text-lg max-w-2xl">Descubre el anime con inteligencia artificial, comunidad global y la mejor calidad 4K. El futuro del entretenimiento japonés está aquí.</p>
-        </div>
-        <div className="absolute inset-0 opacity-20">
-          <div className="absolute top-0 right-0 w-96 h-96 bg-purple-500 rounded-full filter blur-3xl animate-float" />
-          <div className="absolute bottom-0 left-0 w-96 h-96 bg-pink-500 rounded-full filter blur-3xl animate-float animation-delay-1000" />
-          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-cyan-500 rounded-full filter blur-3xl animate-float animation-delay-2000" />
-        </div>
-      </section>
-      <section>
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-bold text-white flex items-center gap-2"><span className="w-1 h-8 bg-gradient-to-b from-purple-500 to-pink-500 rounded-full" />Tendencias Populares</h2>
-          <span className="text-white/40 text-sm">{animeList.length} animes</span>
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 md:gap-6">
-          {animeList.map((anime, index) => <AnimeCard key={anime.id} anime={anime} index={index} />)}
-        </div>
-      </section>
-    </div>
-  );
-}
-EOF
-
-# ------------------- app/anime/[id]/page.js -------------------
-cat > app/anime/[id]/page.js << 'EOF'
-import { getAnimeDetails } from "@/lib/anilist";
-import Link from "next/link";
-import { notFound } from "next/navigation";
-
-export default async function AnimeDetailPage({ params }) {
-  const { id } = await params;
-  let anime;
-  try { anime = await getAnimeDetails(parseInt(id)); } catch { notFound(); }
-  if (!anime) notFound();
-  const title = anime.title.english || anime.title.romaji || "Sin título";
-  const description = anime.description?.replace(/<[^>]+>/g, "") || "Sin descripción disponible.";
-
-  return (
-    <div>
-      <div className="relative rounded-3xl overflow-hidden mb-8 glass">
-        {anime.bannerImage ? (
-          <div className="relative w-full h-[200px] md:h-[300px]">
-            <img src={anime.bannerImage} alt={title} className="w-full h-full object-cover" />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
-          </div>
-        ) : <div className="w-full h-[200px] md:h-[300px] bg-gradient-to-r from-purple-900/30 to-pink-900/30" />}
-        <div className="relative -mt-20 md:-mt-28 px-4 pb-6 flex flex-col md:flex-row gap-6 items-end">
-          <div className="w-32 md:w-48 flex-shrink-0 rounded-2xl overflow-hidden shadow-2xl border-2 border-white/20">
-            <img src={anime.coverImage.extraLarge || anime.coverImage.large} alt={title} className="w-full h-auto" />
-          </div>
-          <div className="flex-1">
-            <h1 className="text-2xl md:text-4xl font-extrabold text-white">{title}</h1>
-            {anime.title.native && <p className="text-white/50 text-sm">{anime.title.native}</p>}
-            <div className="flex flex-wrap items-center gap-3 mt-2">
-              {anime.averageScore > 0 && <span className="text-yellow-400 font-bold">★ {anime.averageScore / 10}</span>}
-              {anime.episodes && <span className="text-white/60 text-sm">{anime.episodes} episodios</span>}
-              {anime.status && <span className={`text-xs px-3 py-1 rounded-full ${anime.status === "RELEASING" ? "bg-green-500/20 text-green-400" : anime.status === "FINISHED" ? "bg-blue-500/20 text-blue-400" : "bg-gray-500/20 text-gray-400"}`}>{anime.status}</span>}
-              {anime.season && anime.seasonYear && <span className="text-white/40 text-sm">{anime.season} {anime.seasonYear}</span>}
+    <!-- MODAL -->
+    <div class="modal" id="modal">
+        <div class="modal-content">
+            <span class="modal-close" onclick="closeModal()">&times;</span>
+            <h2 class="modal-title" id="modalTitle">Título del Anime</h2>
+            <div class="video-container">
+                <video id="videoPlayer" controls preload="metadata" playsinline></video>
             </div>
-          </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                <strong>📺 Episodios:</strong>
+                <span id="episodeCount" style="font-size: 14px; color: #94a3b8;"></span>
+            </div>
+            <div class="episode-list" id="episodeList">
+                <span class="loading-text">Cargando episodios...</span>
+            </div>
         </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 space-y-6">
-          <div className="glass-card"><h2 className="text-xl font-bold text-white mb-3">Sinopsis</h2><p className="text-white/70 leading-relaxed">{description}</p></div>
-          {anime.genres?.length > 0 && <div className="glass-card"><h3 className="text-lg font-semibold text-white mb-2">Géneros</h3><div className="flex flex-wrap gap-2">{anime.genres.map((g) => <span key={g} className="px-3 py-1 rounded-full bg-white/10 text-white/70 text-sm">{g}</span>)}</div></div>}
-          {anime.relations?.nodes?.length > 0 && <div className="glass-card"><h3 className="text-lg font-semibold text-white mb-4">Relacionados</h3><div className="grid grid-cols-2 sm:grid-cols-3 gap-4">{anime.relations.nodes.slice(0, 6).map((rel) => <Link key={rel.id} href={`/anime/${rel.id}`} className="group"><div className="aspect-[2/3] rounded-lg overflow-hidden"><img src={rel.coverImage.large || "/placeholder.jpg"} alt={rel.title.romaji} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" /></div><p className="text-white/60 text-sm mt-1 line-clamp-1 group-hover:text-white transition-colors">{rel.title.romaji}</p></Link>)}</div></div>}
-        </div>
-
-        <div className="space-y-6">
-          <Link href={`/watch/${anime.id}`}><button className="w-full py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 rounded-2xl text-white font-bold text-lg transition-all shadow-lg shadow-purple-500/30 hover:shadow-purple-500/50">▶ Ver Ahora</button></Link>
-          {anime.staff?.nodes?.length > 0 && <div className="glass-card"><h3 className="text-lg font-semibold text-white mb-3">Staff</h3><div className="space-y-2">{anime.staff.nodes.slice(0, 5).map((s) => <div key={s.name.full} className="flex items-center gap-3"><img src={s.image.large || "/placeholder.jpg"} alt={s.name.full} className="w-10 h-10 rounded-full object-cover" /><span className="text-white/70 text-sm">{s.name.full}</span></div>)}</div></div>}
-          <div className="glass-card"><h3 className="text-lg font-semibold text-white mb-3">Estadísticas</h3><div className="space-y-2 text-white/70 text-sm"><div className="flex justify-between"><span>Popularidad</span><span className="text-white">{anime.popularity || "N/A"}</span></div><div className="flex justify-between"><span>Favoritos</span><span className="text-white">{anime.favourites || "N/A"}</span></div>{anime.duration && <div className="flex justify-between"><span>Duración</span><span className="text-white">{anime.duration} min</span></div>}{anime.source && <div className="flex justify-between"><span>Origen</span><span className="text-white">{anime.source}</span></div>}</div></div>
-        </div>
-      </div>
     </div>
-  );
-}
-EOF
 
-# ------------------- app/watch/[id]/page.js -------------------
-cat > app/watch/[id]/page.js << 'EOF'
-import { getAnimeDetails } from "@/lib/anilist";
-import { notFound } from "next/navigation";
-import VideoPlayer from "@/components/VideoPlayer";
-import Link from "next/link";
+    <script>
+        // ============================================================
+        //  CONFIGURACIÓN
+        // ============================================================
+        const API_BASE = 'https://miruro-api-roan.vercel.app/api';
 
-export default async function WatchPage({ params }) {
-  const { id } = await params;
-  let anime;
-  try { anime = await getAnimeDetails(parseInt(id)); } catch { notFound(); }
-  if (!anime) notFound();
-  const title = anime.title.english || anime.title.romaji || "Sin título";
-  const videoUrl = `https://www.youtube.com/embed/dQw4w9WgXcQ?autoplay=1`; // Cambia por URL real
+        // ============================================================
+        //  ELEMENTOS DOM
+        // ============================================================
+        const searchInput = document.getElementById('searchInput');
+        const statusDiv = document.getElementById('status');
+        const grid = document.getElementById('animeGrid');
+        const modal = document.getElementById('modal');
+        const modalTitle = document.getElementById('modalTitle');
+        const episodeList = document.getElementById('episodeList');
+        const episodeCount = document.getElementById('episodeCount');
+        const videoPlayer = document.getElementById('videoPlayer');
 
-  return (
-    <div>
-      <div className="glass-card mb-6"><h1 className="text-2xl font-bold text-white">{title}</h1><p className="text-white/50 text-sm">Episodio 1</p></div>
-      <VideoPlayer title={title} videoUrl={videoUrl} />
-      <div className="mt-6 flex flex-wrap gap-3">
-        <button className="px-6 py-2 bg-purple-600 hover:bg-purple-700 rounded-full text-white font-medium transition-colors">⭐ Agregar a favoritos</button>
-        <button className="px-6 py-2 bg-white/10 hover:bg-white/20 rounded-full text-white font-medium transition-colors">📋 Guardar progreso</button>
-        <Link href={`/anime/${id}`}><button className="px-6 py-2 bg-white/5 hover:bg-white/10 rounded-full text-white/70 font-medium transition-colors">🔙 Volver al detalle</button></Link>
-      </div>
-    </div>
-  );
-}
-EOF
+        let currentEpisodes = [];
+        let currentAnimeTitle = '';
 
-# ------------------- app/search/page.js -------------------
-cat > app/search/page.js << 'EOF'
-import { searchAnime } from "@/lib/anilist";
-import AnimeCard from "@/components/AnimeCard";
+        // ============================================================
+        //  CATÁLOGO DE ANIMES POPULARES (para mostrar al inicio)
+        // ============================================================
+        const CATALOG_QUERIES = [
+            'Naruto', 'One Piece', 'Demon Slayer', 'Attack on Titan',
+            'Jujutsu Kaisen', 'My Hero Academia', 'Death Note',
+            'Fullmetal Alchemist', 'Dragon Ball', 'One Punch Man',
+            'Tokyo Ghoul', 'Sword Art Online'
+        ];
 
-export default async function SearchPage({ searchParams }) {
-  const q = searchParams.q || "";
-  if (!q) return <div className="text-center py-20"><h2 className="text-2xl text-white/70">Escribe algo para buscar</h2></div>;
-  const { media: results } = await searchAnime(q, 1, 24);
-  if (!results || results.length === 0) return <div className="text-center py-20"><h2 className="text-2xl text-white/70">No se encontraron resultados para "{q}"</h2></div>;
+        // ============================================================
+        //  FUNCIONES PRINCIPALES
+        // ============================================================
 
-  return (
-    <div>
-      <h1 className="text-3xl font-bold text-white mb-6">Resultados para "<span className="gradient-text">{q}</span>"</h1>
-      <p className="text-white/50 mb-8">{results.length} resultados encontrados</p>
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 md:gap-6">
-        {results.map((anime, index) => <AnimeCard key={anime.id} anime={anime} index={index} />)}
-      </div>
-    </div>
-  );
-}
-EOF
+        // ----- Cargar catálogo al inicio -----
+        async function loadCatalog() {
+            setStatus('🌟 Cargando catálogo de animes populares...');
+            grid.innerHTML = '';
+            try {
+                // Hacemos búsqueda para cada término y combinamos resultados
+                const allResults = [];
+                for (const query of CATALOG_QUERIES) {
+                    const url = `${API_BASE}/search?query=${encodeURIComponent(query)}&per_page=3`;
+                    const response = await fetch(url);
+                    if (!response.ok) continue;
+                    const data = await response.json();
+                    if (data.success && data.results?.results) {
+                        for (const anime of data.results.results) {
+                            // Evitar duplicados por ID
+                            if (!allResults.some(a => a.id === anime.id)) {
+                                allResults.push(anime);
+                            }
+                        }
+                    }
+                }
+                if (allResults.length === 0) {
+                    setStatus('⚠️ No se pudo cargar el catálogo. Intenta buscar manualmente.', true);
+                    return;
+                }
+                setStatus(`✅ Catálogo cargado: ${allResults.length} animes populares. Haz clic en una tarjeta.`);
+                renderAnimeGrid(allResults);
+            } catch (error) {
+                console.error('Error al cargar catálogo:', error);
+                setStatus('❌ Error al cargar catálogo. Usa la búsqueda manual.', true);
+            }
+        }
 
-# ------------------- .gitignore -------------------
-cat > .gitignore << 'EOF'
-# dependencies
-node_modules
-/.pnp
-.pnp.js
-.yarn/install-state.gz
+        // ----- Buscar animes -----
+        async function searchAnime() {
+            const query = searchInput.value.trim();
+            if (!query) { setStatus('⚠️ Escribe el nombre de un anime.', true); return; }
+            setStatus(`⏳ Buscando "${query}"...`);
+            grid.innerHTML = '';
+            try {
+                const url = `${API_BASE}/search?query=${encodeURIComponent(query)}&per_page=20`;
+                const response = await fetch(url);
+                if (!response.ok) throw new Error(`Error HTTP: ${response.status}`);
+                const data = await response.json();
+                if (!data.success || !data.results || data.results.results.length === 0) {
+                    setStatus(`❌ No se encontraron resultados para "${query}".`, true);
+                    grid.innerHTML = `<div style="grid-column:1/-1; text-align:center; padding:40px; color:#94a3b8;">No se encontraron animes.</div>`;
+                    return;
+                }
+                const animes = data.results.results;
+                setStatus(`✅ ${animes.length} resultados encontrados.`);
+                renderAnimeGrid(animes);
+            } catch (error) {
+                console.error('Error en búsqueda:', error);
+                setStatus('❌ Error de conexión. Intenta de nuevo.', true);
+                grid.innerHTML = `<div style="grid-column:1/-1; text-align:center; padding:40px; color:#f87171;">⚠️ No se pudo conectar con el servidor.</div>`;
+            }
+        }
 
-# testing
-/coverage
+        // ----- Renderizar grid -----
+        function renderAnimeGrid(animes) {
+            grid.innerHTML = animes.map(anime => {
+                const title = anime.title?.romaji || anime.title?.english || 'Sin título';
+                const image = anime.coverImage?.large || anime.coverImage?.medium || '';
+                const year = anime.seasonYear || 'Año desconocido';
+                return `
+                    <div class="anime-card" onclick="openAnime(${anime.id}, '${title.replace(/'/g, "\\'")}')">
+                        <img src="${image}" alt="${title}" loading="lazy"
+                             onerror="this.src='https://via.placeholder.com/200x280/1e293b/94a3b8?text=${encodeURIComponent(title)}'" />
+                        <div class="info">
+                            <h3>${title}</h3>
+                            <p>${year}</p>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
 
-# next.js
-/.next/
-/out/
+        // ----- Abrir modal y cargar episodios (con fallback) -----
+        async function openAnime(animeId, title) {
+            currentAnimeTitle = title;
+            modalTitle.textContent = title;
+            modal.classList.add('active');
+            episodeList.innerHTML = '<span class="loading-text">⏳ Cargando episodios...</span>';
+            episodeCount.textContent = '';
+            videoPlayer.pause();
+            videoPlayer.removeAttribute('src');
+            videoPlayer.load();
 
-# production
-/build
+            try {
+                // INTENTO 1: endpoint principal de episodios
+                const url = `${API_BASE}/episodes/${animeId}`;
+                const response = await fetch(url);
+                if (!response.ok) {
+                    // Si da 500, intentamos con Gogoanime directamente
+                    throw new Error(`Error ${response.status}`);
+                }
+                const data = await response.json();
+                if (data.success && data.results && data.results.length > 0) {
+                    currentEpisodes = data.results;
+                    renderEpisodes(currentEpisodes);
+                    return;
+                }
+                // Si no hay episodios, intentar Gogoanime
+                throw new Error('No hay episodios en el endpoint principal');
+            } catch (error) {
+                console.warn('Fallo el endpoint de episodios, intentando con Gogoanime...', error.message);
+                // INTENTO 2: obtener episodios desde Gogoanime (usando búsqueda por título)
+                try {
+                    const searchQuery = encodeURIComponent(currentAnimeTitle);
+                    const gogoUrl = `${API_BASE}/anime/gogoanime/info?query=${searchQuery}`;
+                    const gogoResponse = await fetch(gogoUrl);
+                    if (!gogoResponse.ok) throw new Error(`Error Gogo: ${gogoResponse.status}`);
+                    const gogoData = await gogoResponse.json();
+                    if (gogoData.results && gogoData.results.episodes) {
+                        // Convertir episodios de Gogo al formato esperado
+                        currentEpisodes = gogoData.results.episodes.map(ep => ({
+                            id: ep.episodeId || ep.id,
+                            number: ep.number || ep.episode,
+                            title: ep.title || `Episodio ${ep.number}`
+                        }));
+                        if (currentEpisodes.length > 0) {
+                            renderEpisodes(currentEpisodes);
+                            return;
+                        }
+                    }
+                    throw new Error('No se encontraron episodios en Gogoanime');
+                } catch (gogoError) {
+                    console.error('Ambos endpoints fallaron:', gogoError);
+                    episodeList.innerHTML = `<span class="error-text">❌ No se pudieron cargar los episodios. El anime puede no tener episodios indexados.</span>`;
+                    episodeCount.textContent = 'Error';
+                    setStatus('❌ Error al cargar episodios', true);
+                }
+            }
+        }
 
-# misc
-.DS_Store
-*.pem
+        // ----- Renderizar lista de episodios -----
+        function renderEpisodes(episodes) {
+            episodeCount.textContent = `${episodes.length} episodios`;
+            episodeList.innerHTML = episodes.map((ep, index) => {
+                const epNumber = ep.number || ep.episode || index + 1;
+                const epTitle = ep.title ? ` - ${ep.title}` : '';
+                return `
+                    <button class="episode-btn" data-index="${index}" onclick="playEpisode(${index})">
+                        ${epNumber}${epTitle}
+                    </button>
+                `;
+            }).join('');
+            if (episodes.length > 0) playEpisode(0);
+        }
 
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+        // ----- Reproducir episodio (con múltiples endpoints) -----
+        async function playEpisode(index) {
+            if (index < 0 || index >= currentEpisodes.length) return;
+            const episode = currentEpisodes[index];
+            const epNum = episode.number || episode.episode || index + 1;
+            modalTitle.textContent = `${currentAnimeTitle} — Episodio ${epNum}`;
 
-# local env files
-.env*.local
-.env
+            // Resaltar botón activo
+            document.querySelectorAll('.episode-btn').forEach((btn, i) => {
+                btn.classList.toggle('active', i === index);
+            });
 
-# vercel
-.vercel
+            // Endpoints a probar
+            const endpoints = [
+                `${API_BASE}/anime/gogoanime/watch/${episode.id}`,
+                `${API_BASE}/watch/${episode.id}`,
+                `${API_BASE}/episodes/${episode.id}/sources`,
+                `${API_BASE}/stream/${episode.id}`
+            ];
 
-# typescript
-*.tsbuildinfo
-next-env.d.ts
-EOF
+            let videoUrl = null;
 
-# 4. Instalar dependencias
-echo "📦 Instalando dependencias (puede tomar unos minutos)..."
-npm install
+            for (const endpoint of endpoints) {
+                try {
+                    console.log(`Intentando: ${endpoint}`);
+                    const response = await fetch(endpoint);
+                    if (!response.ok) continue;
+                    const data = await response.json();
+                    let sources = data.sources || data.results?.sources || data.data?.sources || [];
+                    if (sources.length === 0 && Array.isArray(data.results)) {
+                        sources = data.results;
+                    }
+                    if (sources.length > 0) {
+                        const source = sources[0];
+                        videoUrl = source.url || source.file || source.link;
+                        if (videoUrl) break;
+                    }
+                } catch (err) {
+                    console.warn(`Fallo ${endpoint}:`, err.message);
+                }
+            }
 
-# 5. Mensaje final
-echo ""
-echo "✅ ¡Proyecto creado con éxito!"
-echo ""
-echo "📁 Para iniciar el servidor de desarrollo:"
-echo "   cd anime-2026"
-echo "   npm run dev"
-echo ""
-echo "🌐 Abre http://localhost:3000 en tu navegador."
-echo ""
-echo "🎬 ¡Disfruta de tu plataforma Anime 2026!"
+            if (videoUrl) {
+                try {
+                    videoPlayer.src = videoUrl;
+                    videoPlayer.load();
+                    await videoPlayer.play();
+                    setStatus(`▶️ Reproduciendo episodio ${epNum}`);
+                    return;
+                } catch (playError) {
+                    console.warn('Error al reproducir:', playError);
+                }
+            }
+
+            // Fallback: abrir en Gogoanime
+            const confirmOpen = confirm(
+                `No se pudo obtener el video del episodio ${epNum}.\n¿Quieres abrirlo en Gogoanime?`
+            );
+            if (confirmOpen) {
+                const searchQuery = encodeURIComponent(`${currentAnimeTitle} episode ${epNum}`);
+                window.open(`https://gogoanime3.net/search.html?keyword=${searchQuery}`, '_blank');
+            } else {
+                alert(`No se pudo cargar el episodio ${epNum}.`);
+            }
+            setStatus(`❌ Error al cargar el episodio ${epNum}`, true);
+        }
+
+        // ----- Cerrar modal -----
+        function closeModal() {
+            modal.classList.remove('active');
+            videoPlayer.pause();
+            videoPlayer.removeAttribute('src');
+            videoPlayer.load();
+            currentEpisodes = [];
+            setStatus('🔍 Busca otro anime o explora el catálogo.');
+        }
+
+        // ----- Actualizar estado -----
+        function setStatus(message, isError = false) {
+            statusDiv.textContent = message;
+            statusDiv.style.color = isError ? '#f87171' : '#94a3b8';
+        }
+
+        // ============================================================
+        //  EVENTOS
+        // ============================================================
+        searchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') searchAnime();
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeModal();
+        });
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeModal();
+        });
+
+        // ============================================================
+        //  INICIO
+        // ============================================================
+        window.onload = () => {
+            loadCatalog();
+        };
+    </script>
+</body>
+</html>
